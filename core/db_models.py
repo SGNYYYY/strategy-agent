@@ -67,7 +67,7 @@ def init_db(CONFIG):
     # 初始化账户资金 (如果不存在)
     if Account.select().count() == 0:
         # 从配置读取初始资金
-        initial_cash = CONFIG.get('initial_cash', 1000000.0)
+        initial_cash = CONFIG['settings'].get('initial_cash', 1000000.0)
         Account.create(id=1, total_assets=initial_cash, cash=initial_cash, market_value=0.0)
     db.close()
 

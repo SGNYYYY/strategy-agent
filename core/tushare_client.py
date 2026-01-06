@@ -102,10 +102,36 @@ class TushareClient:
         else:
             logging.info(f"No data for {ts_code} on {execution_date} (Market might be closed or data delay).")
 
+    def get_realtime_quote(self, ts_code):
+        """获取实时行情所有数据(dict)"""
+        try:
+            df = ts.realtime_quote(ts_code=ts_code)
+            if df is not None and not df.empty:
+                # 统一列名小写
+                data = df.iloc[0].to_dict()
+                return {k.lower(): v for k, v in data.items()}
+        except Exception as e:
+            logging.warning(f"Realtime full quote failed for {ts_code}: {e}")
+        return None
+
     def get_latest_price(self, ts_code):
-        """获取最新价格 (用于盘中/收盘估值) - 使用 daily 可能有延迟，需注意"""
-        # 如果是盘中，Tushare积分不够可能拿不到 realtime，这里暂时用 daily 获取“上一日”或“当日收盘”
-        # 实际生产中可能需要 sina 爬虫等实时接口
+        """获取最新价格 (优先使用实时接口)"""
+        # 1. 尝试使用实时接口 (需要 tushare >= 1.3.3)
+        try:
+            # ts.realtime_quote 是爬虫接口，数据实时性较好
+            df = ts.realtime_quote(ts_code=ts_code)
+            if df is not None and not df.empty:
+                row = df.iloc[0]
+                # 不同版本/来源可能列名不同，常见为 price 或 close
+                for col in ['price', 'PRICE', 'close', 'CLOSE', 'trade']:
+                    if col in row:
+                        val = float(row[col])
+                        if val > 0:
+                            return val
+        except Exception as e:
+            logging.warning(f"Realtime quote failed for {ts_code}, falling back to daily: {e}")
+
+        # 2. 降级: Daily 接口 (可能有延迟或需盘后)
         today = datetime.datetime.now().strftime('%Y%m%d')
         df = self.fetch_daily(ts_code, start_date=today, end_date=today)
         if df is None or df.empty:

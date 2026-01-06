@@ -108,6 +108,99 @@ def run_pre_market_routine(test_mode=False):
         logging.info("今日无买入计划，不发送通知。")
     logging.info("<<< Pre-Market Routine Finished")
 
+def run_midday_routine(test_mode=False):
+    """午间休盘前分析: 风控(止盈/止损) + 机会(加仓/买入)"""
+    logging.info(">>> Starting Midday Routine")
+    
+    execution_logs = []
+    buy_candidates_reports = [] # 收集买入建议
+
+    # 1. 遍历持仓 (检查卖出 或 加仓)
+    positions = Position.select()
+    held_codes = set()
+    for pos in positions:
+        held_codes.add(pos.ts_code)
+        
+        # 获取实时价格
+        quote = ts_client.get_realtime_quote(pos.ts_code)
+        current_price = 0.0
+        if quote:
+            try:
+                current_price = float(quote.get('price', quote.get('close', 0)))
+            except: pass
+        if current_price <= 0:
+             current_price = ts_client.get_latest_price(pos.ts_code)
+        
+        if current_price > 0:
+            pos.current_price = current_price
+            # pos.save() # Optional
+
+            # 分析
+            report = analyst.analyze_intra_day(pos.ts_code, current_price, position=pos, quote_data=quote)
+            
+            if report:
+                action = report.get('action')
+                # 情况A: 卖出建议
+                if action in ['SELL_ALL', 'SELL_HALF']:
+                    sell_order = decision_maker.make_sell_decision(report) # 简单透传
+                    if sell_order:
+                        stock_name = ts_client.get_stock_name(sell_order['ts_code'])
+                        res = trader.execute_sell(sell_order['ts_code'], sell_order['action'], sell_order['reason'], current_price, stock_name=stock_name)
+                        if res: execution_logs.append(res)
+                
+                # 情况B: 加仓建议
+                elif action == 'BUY':
+                    logging.info(f"Analyst suggests ADDING position for {pos.ts_code}")
+                    buy_candidates_reports.append(report)
+
+    # 2. 遍历 Watchlist (检查新开仓) - 仅检查非持仓部分
+    watchlist = set(CONFIG.get('watchlist', []))
+    new_candidates = watchlist - held_codes
+    
+    for ts_code in new_candidates:
+        quote = ts_client.get_realtime_quote(ts_code)
+        current_price = 0.0
+        if quote:
+            try:
+                current_price = float(quote.get('price', quote.get('close', 0)))
+            except: pass
+        
+        if current_price > 0:
+            # 分析 (非持仓)
+            report = analyst.analyze_intra_day(ts_code, current_price, position=None, quote_data=quote)
+            if report and report.get('action') == 'BUY':
+                logging.info(f"Analyst suggests BUYING new stock {ts_code}")
+                buy_candidates_reports.append(report)
+                
+    # 3. 统一执行买入决策 (资金分配)
+    if buy_candidates_reports:
+        # 复用 make_buy_decision (注意: 它会检查最大持仓比例)
+        # 传入的 reports 已经混合了 加仓 和 新开仓
+        max_pos_pct = CONFIG['settings'].get('max_position_per_stock', 1.0)
+        buy_orders = decision_maker.make_buy_decision(buy_candidates_reports, max_position_pct=max_pos_pct)
+        
+        for order in buy_orders:
+            ts_code = order['ts_code']
+            budget = order['budget']
+            reason = order['reason']
+            # 重新获取价格或使用之前的
+            price = ts_client.get_latest_price(ts_code)
+            stock_name = ts_client.get_stock_name(ts_code)
+            
+            if price > 0:
+                res = trader.execute_buy(ts_code, budget, reason, price, stock_name=stock_name)
+                if res: execution_logs.append(res)
+
+    # 4. 推送
+    if execution_logs:
+        msg = "**盘中风控报告(午间)** \n\n"
+        msg += "🔔 **执行操作(买/卖):** \n" + "\n".join([f"- {l}" for l in execution_logs])
+        notifier.send_markdown("盘中操作", msg)
+    else:
+        if test_mode:
+            notifier.send_markdown("盘中报告", "**盘中分析完成** \n\n无操作建议。")
+        logging.info("Midday check finished, no action.")
+
 def run_pre_close_routine(test_mode=False):
     """尾盘流程: 监控持仓 -> 分析 -> 卖出"""
     logging.info(">>> Starting Pre-Close Routine")
@@ -124,7 +217,7 @@ def run_pre_close_routine(test_mode=False):
         current_price = ts_client.get_latest_price(pos.ts_code)
         if current_price > 0:
             pos.current_price = current_price
-            # pos.save() # 暂不保存，仅用于内存分析
+            pos.save()
         
         # 2. 分析
         report = analyst.analyze_pre_close(pos)
@@ -169,14 +262,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Strategy Agent")
     parser.add_argument('--test', action='store_true', help='运行测试模式')
     parser.add_argument('--pre-market', action='store_true', help='立即运行早盘策略')
+    parser.add_argument('--midday', action='store_true', help='立即运行午间策略')
     parser.add_argument('--pre-close', action='store_true', help='立即运行尾盘策略')
     parser.add_argument('--sync', action='store_true', help='立即运行数据同步')
     args = parser.parse_args()
 
     # 手动触发模式
-    if args.pre_market or args.pre_close or args.sync:
+    if args.pre_market or args.midday or args.pre_close or args.sync:
         if args.pre_market:
             run_pre_market_routine(args.test)
+        if args.midday:
+            run_midday_routine(args.test)
         if args.pre_close:
             run_pre_close_routine(args.test)
         if args.sync:
@@ -190,10 +286,12 @@ if __name__ == "__main__":
     
     # 从配置读取时间
     t_morning = CONFIG['schedule']['morning_routine'].split(':')
+    t_midday = CONFIG['schedule']['midday_routine'].split(':')
     t_afternoon = CONFIG['schedule']['afternoon_routine'].split(':')
     t_sync = CONFIG['schedule']['data_sync'].split(':')
 
     scheduler.add_job(run_pre_market_routine, 'cron', hour=t_morning[0], minute=t_morning[1], day_of_week='mon-fri')
+    scheduler.add_job(run_midday_routine, 'cron', hour=t_midday[0], minute=t_midday[1], day_of_week='mon-fri')
     scheduler.add_job(run_pre_close_routine, 'cron', hour=t_afternoon[0], minute=t_afternoon[1], day_of_week='mon-fri')
     scheduler.add_job(run_data_sync_routine, 'cron', hour=t_sync[0], minute=t_sync[1], day_of_week='mon-fri')
 

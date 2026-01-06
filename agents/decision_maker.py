@@ -32,8 +32,8 @@ class DecisionMakerAgent(BaseAgent):
                                     cash=account.cash,
                                     holdings_summary=holdings_summary,
                                     analyst_reports=str(buy_candidates),
-                                    max_buy_count=2,
-                                    max_single_position=max_single_position) # 假设每次最多买2只
+                                    max_buy_count=5,
+                                    max_single_position=max_single_position) # 假设每次最多买5只
 
         logging.info("Decision Maker evaluating buy candidates...")
         result = self.call_llm(prompt, json_mode=True)

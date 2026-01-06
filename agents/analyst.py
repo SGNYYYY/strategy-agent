@@ -53,3 +53,52 @@ class AnalystAgent(BaseAgent):
         logging.info(f"Analyst reviewing holding {position.ts_code}...")
         result = self.call_llm(prompt, json_mode=True)
         return result
+
+    def analyze_intra_day(self, ts_code, current_price, position=None, quote_data=None):
+        """盘中(午间)分析: 支持持仓和非持仓"""
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        is_holding = False
+        volume = 0
+        avg_price = 0.0
+        pnl_pct = 0.0
+
+        if position:
+            is_holding = True
+            volume = position.volume
+            avg_price = position.avg_price
+            if avg_price > 0:
+                pnl_pct = round((current_price - avg_price) / avg_price * 100, 2)
+        
+        # 默认值
+        open_p = current_price
+        high_p = current_price
+        low_p = current_price
+        close_p = current_price
+
+        if quote_data:
+            try:
+                open_p = float(quote_data.get('open', open_p))
+                high_p = float(quote_data.get('high', high_p))
+                low_p = float(quote_data.get('low', low_p))
+                # 兼容 price 或 close
+                close_p = float(quote_data.get('price', quote_data.get('close', close_p)))
+            except Exception as e:
+                logging.warning(f"Error parsing quote data: {e}")
+
+        prompt = self.render_prompt('analysis_intra_day.j2', 
+                                    ts_code=ts_code, 
+                                    is_holding=is_holding,
+                                    volume=volume,
+                                    avg_price=avg_price,
+                                    current_price=current_price,
+                                    pnl_pct=pnl_pct,
+                                    open=open_p, 
+                                    high=high_p,
+                                    low=low_p,
+                                    close=close_p,
+                                    current_time=current_time)
+        
+        logging.info(f"Analyst (Intra-day) reviewing {ts_code} (Holding: {is_holding})...")
+        result = self.call_llm(prompt, json_mode=True)
+        return result

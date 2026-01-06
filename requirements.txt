@@ -1,6 +1,6 @@
 apscheduler
 peewee
-tushare
+tushare>=1.3.3
 openai
 jinja2
 python-dotenv
