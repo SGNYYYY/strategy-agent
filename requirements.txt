@@ -1,0 +1,9 @@
+apscheduler
+peewee
+tushare
+openai
+jinja2
+python-dotenv
+requests
+pyyaml
+akshare

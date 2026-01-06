@@ -1,0 +1,21 @@
+watchlist:
+  - "000547.SZ" # 航天发展
+  - "600879.SH" # 航天电子
+  - "603123.SH" # 翠微股份
+  - "002600.SZ" # 领益智造
+  - "603686.SH" # 龙马环卫
+  - "002421.SZ" # 达实智能
+  - "159320.SZ" # 电网ETF
+  - "588000.SH" # 科创50ETF
+
+settings:
+  initial_cash: 25000
+  max_position_per_stock: 0.3 # 单只股票最大仓位 30%
+  enable_auto_mining: true # 是否允许挖掘池外股票
+  database_file: "data/strategy.db"
+  log_level: "INFO"
+
+schedule:
+  morning_routine: "08:50" # 开盘前分析
+  afternoon_routine: "14:40" # 收盘前决策
+  data_sync: "16:00" # 盘后数据同步

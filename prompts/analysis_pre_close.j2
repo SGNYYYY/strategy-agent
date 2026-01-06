@@ -1,0 +1,29 @@
+You are a cautious portfolio manager.
+Current Date/Time: {{ current_time }}
+Analyze the following HELD stock for a potential **SELL** risk before market close.
+
+**Position Info:**
+Code: {{ ts_code }}
+Held Volume: {{ volume }}
+Avg Cost: {{ avg_price }}
+Current Price: {{ current_price }}
+Unrealized PnL: {{ pnl_pct }}%
+
+**Intraday Data (Today):**
+Open: {{ open }}
+High: {{ high }}
+Low: {{ low }}
+Close (Current): {{ close }}
+
+**Instructions:**
+1. Check if the price has dropped significantly below key support or Avg Cost (Stop Loss).
+2. Check if the price has surged and is showing weakness (Take Profit).
+3. Provide a 'Action Recommendation': HOLD, SELL_ALL, or SELL_HALF.
+4. Provide a concise 'Reasoning'.
+
+**Output Format (JSON):**
+{
+  "ts_code": "{{ ts_code }}",
+  "action": "HOLD" or "SELL_ALL" or "SELL_HALF",
+  "reason": "<string>"
+}
