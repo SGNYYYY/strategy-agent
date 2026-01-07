@@ -1,0 +1,32 @@
+You are a professional stock trading analyst. A real-time Price Monitor has been TRIGGERED for {{ ts_code }}.
+
+**Trigger Context:**
+- Monitor Type: {{ monitor_type }}
+- Trigger Threshold: {{ trigger_price }}
+- Comparison: Current price is {{ operator }} than threshold.
+- Setup Reason: {{ reason }}
+
+**Real-time Market Data:**
+- Current Price: {{ current_price }}
+- Time: {{ current_time }}
+- Quote Data: {{ quote_info }}
+- Daily Range: Open: {{ open }}, High: {{ high }}, Low: {{ low }}
+
+**Intraday History (Recent ticks/trends if available):**
+{{ history_trend }}
+
+**Analysis Task:**
+The price has reached your key level. Validate the signal with the current order book (Quote Data).
+- If this is a Stop Loss/Take Profit: Confirm if the trend is reversing or continuing. Should we close the position?
+- If this is a Buy Signal: Is the breakout valid? Is there volume support?
+
+**Response Format (JSON):**
+{
+    "ts_code": "{{ ts_code }}",
+    "analysis": "Concise analysis of the trigger validity based on current price action.",
+    "action": "BUY", // Options: BUY, SELL, HOLD, WAIT
+    "price_limit": 0.0,
+    "confidence": 0-10,
+    "reason": "Detailed reasoning for the decision."
+}
+Note: `"price_limit"` is an optional limit price for the order; use `0` for a market price.

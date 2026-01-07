@@ -19,11 +19,18 @@ History Data (Last 30 days):
 3. Provide a 'Confidence Score' from 0 to 10.
 4. Provide a 'Action Recommendation': BUY or WAIT.
 5. Provide a concise 'Reasoning' (max 50 words).
+6. [Optional] Suggest a **Price Monitor** if we should watch for a specific price level (e.g. breakout point).
 
 **Output Format (JSON):**
 {
   "ts_code": "{{ ts_code }}",
   "confidence": <float>,
   "action": "BUY" or "WAIT",
-  "reason": "<string>"
+  "reason": "<string>",
+  "monitor_setup": {
+      "trigger_price": <float>,     // 0 if no monitor needed
+      "operator": "gt" or "lt",     // 'gt' for breakout, 'lt' for dip buy
+      "monitor_type": "buy_signal", // 'buy_signal', 'stop_loss', 'take_profit'
+      "reason": "Monitor reason"
+  }
 }

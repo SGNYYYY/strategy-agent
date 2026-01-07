@@ -102,3 +102,32 @@ class Trader:
             )
             logging.info(f"Executed SELL {ts_code}{name_str}: {sell_volume} shares at {price_estimate}")
             return f"SELL {ts_code}{name_str}: {sell_volume} @ {price_estimate}"
+
+    def execute_orders(self, orders):
+        """批量执行订单"""
+        results = []
+        for order in orders:
+            try:
+                ts_code = order['ts_code']
+                action = order['action']
+                reason = order.get('reason', '')
+                price = order.get('price', 0)
+                # 如果没有指定价格，可能需要再次获取或者在调用前传进来，这里假设必须传
+                
+                res = None
+                if action == 'BUY':
+                    budget = order.get('budget', 0)
+                    res = self.execute_buy(ts_code, budget, reason, price)
+                elif action in ['SELL', 'SELL_HALF', 'SELL_ALL', 'STOP_LOSS', 'TAKE_PROFIT']:
+                    # 映射 action
+                    act = action
+                    if action in ['STOP_LOSS', 'TAKE_PROFIT']:
+                        act = 'SELL_ALL'
+                    
+                    res = self.execute_sell(ts_code, act, reason, price)
+                
+                if res:
+                    results.append(res)
+            except Exception as e:
+                logging.error(f"Failed to execute order {order}: {e}")
+        return results

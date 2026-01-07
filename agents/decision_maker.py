@@ -62,3 +62,53 @@ class DecisionMakerAgent(BaseAgent):
                 'reason': analysis_result.get('reason')
             }
         return None
+
+    def decide_on_trigger(self, analysis_result):
+        """决策：基于即时触发分析结果"""
+        if not analysis_result:
+            return []
+        
+        action = analysis_result.get('action', 'HOLD')
+        ts_code = analysis_result.get('ts_code')
+        confidence = float(analysis_result.get('confidence', 0))
+        reason = analysis_result.get('reason', '')
+        limit_price = analysis_result.get('price_limit', 0.0)
+        
+        logging.info(f"DecisionMaker evaluating trigger: {action} (Conf={confidence})")
+        
+        if confidence < 7.0 and action != 'HOLD':
+            logging.info(f"Trigger action {action} rejected due to low confidence {confidence}")
+            return []
+        
+        orders = []
+        if action == 'BUY':
+             # 简单的风控：单笔不超过 20% 现金 或 50000
+             try:
+                 account = Account.select().first()
+                 if account and account.cash > 5000:
+                     budget = min(50000, account.cash * 0.2)
+                     orders.append({
+                         'ts_code': ts_code,
+                         'action': 'BUY',
+                         'budget': budget,
+                         'price': limit_price,
+                         'reason': f"Trigger Exec: {reason}"
+                     })
+             except Exception:
+                 pass
+
+        elif action in ['SELL', 'STOP_LOSS', 'TAKE_PROFIT']:
+             try:
+                 pos = Position.select().where(Position.ts_code == ts_code).first()
+                 if pos and pos.volume_available > 0:
+                     orders.append({
+                         'ts_code': ts_code,
+                         'action': 'SELL',
+                         'volume': pos.volume_available, # 默认清仓，后续可精细化
+                         'price': limit_price,
+                         'reason': f"Trigger Exec: {reason}"
+                     })
+             except Exception:
+                 pass
+                 
+        return orders

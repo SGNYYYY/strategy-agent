@@ -12,7 +12,8 @@ from core.scanner import MarketScanner
 from core.notifier import DingTalkNotifier
 from core.trader import Trader
 from core.news_client import NewsClient
-from core.db_models import init_db, Position
+from core.db_models import init_db, Position, PriceMonitor
+from core.monitor import PriceMonitorService
 from agents.analyst import AnalystAgent
 from agents.decision_maker import DecisionMakerAgent
 
@@ -38,6 +39,7 @@ notifier = DingTalkNotifier() # 确保 .env 配置了 Token
 trader = Trader()
 analyst = AnalystAgent()
 decision_maker = DecisionMakerAgent()
+monitor_service = PriceMonitorService()
 
 def run_pre_market_routine(test_mode=False):
     """早盘流程: 扫描 -> 分析 -> 决策 -> 买入"""
@@ -83,8 +85,16 @@ def run_pre_market_routine(test_mode=False):
     except Exception as e:
         logging.error(f"Failed to update positions in pre-market: {e}")
     
+    # 0.6 清理旧监控 (每天都是新的开始)
+    try:
+        deleted = PriceMonitor.delete().where(PriceMonitor.status == 'ACTIVE').execute()
+        logging.info(f"Cleared {deleted} expired monitors from previous day.")
+    except Exception as e:
+        logging.error(f"Failed to clear old monitors: {e}")
+
     # 1. 确定候选池
-    candidates = set(CONFIG.get('watchlist', []))
+    whitelist = set(CONFIG.get('watchlist', []))
+    candidates = set(whitelist)
     
     # 2. 自动挖掘 (如果开启)
     if CONFIG['settings'].get('enable_auto_mining'):
@@ -111,6 +121,41 @@ def run_pre_market_routine(test_mode=False):
              logging.info(f"Report for {ts_code}: {report}")
              analyst_reports.append(report)
 
+             # Setup Price Monitor (New Feature)
+             # Restriction: All candidates (whitelist + auto-mined) are eligible for monitoring
+             if 'monitor_setup' in report and isinstance(report['monitor_setup'], dict):
+                 setup = report['monitor_setup']
+                 try:
+                     trig_price = float(setup.get('trigger_price', 0))
+                     if trig_price > 0:
+                         # 过滤掉过于接近当前价的无效监控 (比如偏差 < 0.5%)
+                         current_p = 0.0
+                         try:
+                             if quote:
+                                 current_p = float(quote.get('price', quote.get('open', 0)))
+                         except Exception:
+                             pass
+                         
+                         is_valid = True
+                         if current_p > 0:
+                             diff_pct = abs(trig_price - current_p) / current_p * 100
+                             if diff_pct < 0.5:
+                                logging.warning(f"Monitor skipped for {ts_code}: Target {trig_price} is too close to current {current_p} (<0.5%)")
+                                is_valid = False
+                         
+                         if is_valid:
+                             PriceMonitor.create(
+                                ts_code=ts_code,
+                                trigger_price=trig_price,
+                                operator=setup.get('operator', 'gt'),
+                                monitor_type=setup.get('monitor_type', 'signal'),
+                                reason=setup.get('reason', 'Pre-market setup'),
+                                status='ACTIVE'
+                             )
+                             logging.info(f"Monitor SETUP: {ts_code} at {trig_price}")
+                 except Exception as e:
+                     logging.error(f"Failed to create monitor: {e}")
+
     # 4. 决策
     max_pos_pct = CONFIG['settings'].get('max_position_per_stock', 1.0)
     buy_orders = decision_maker.make_buy_decision(analyst_reports, max_position_pct=max_pos_pct)
@@ -132,7 +177,9 @@ def run_pre_market_routine(test_mode=False):
 
             if price > 0:
                 res = trader.execute_buy(ts_code, budget, reason, price, stock_name=stock_name)
-                if res: execution_logs.append(res)
+                if res: 
+                    # 增加理由到通知
+                    execution_logs.append(f"{res}\n  _Reason: {reason}_")
     
     # 5. 推送
     if suggested_ops:
@@ -195,7 +242,8 @@ def run_midday_routine(test_mode=False):
                     if sell_order:
                         stock_name = ts_client.get_stock_name(sell_order['ts_code'])
                         res = trader.execute_sell(sell_order['ts_code'], sell_order['action'], sell_order['reason'], current_price, stock_name=stock_name)
-                        if res: execution_logs.append(res)
+                        if res: 
+                            execution_logs.append(f"{res}\n  _Reason: {sell_order['reason']}_")
                 
                 # 情况B: 加仓建议
                 elif action == 'BUY':
@@ -238,7 +286,8 @@ def run_midday_routine(test_mode=False):
             
             if price > 0:
                 res = trader.execute_buy(ts_code, budget, reason, price, stock_name=stock_name)
-                if res: execution_logs.append(res)
+                if res: 
+                    execution_logs.append(f"{res}\n  _Reason: {reason}_")
 
     # 4. 推送
     if execution_logs:
@@ -282,7 +331,8 @@ def run_pre_close_routine(test_mode=False):
         if sell_order:
             stock_name = ts_client.get_stock_name(sell_order['ts_code'])
             res = trader.execute_sell(sell_order['ts_code'], sell_order['action'], sell_order['reason'], current_price, stock_name=stock_name)
-            if res: execution_logs.append(res)
+            if res: 
+                execution_logs.append(f"{res}\n  _Reason: {sell_order['reason']}_")
 
     # 5. 推送
     msg = "**尾盘风控报告** \n\n"
@@ -306,6 +356,21 @@ def run_data_sync_routine(test_mode=False):
     for pos in Position.select():
         ts_client.append_daily_data(pos.ts_code)
     logging.info("<<< Data Sync Finished")
+
+def run_monitor_task():
+    """实时价格监控任务"""
+    now = datetime.datetime.now().time()
+    # 简单的交易时间判断 (9:20 - 11:35, 12:55 - 15:05)
+    start_am = datetime.time(9, 20)
+    end_am = datetime.time(11, 35)
+    start_pm = datetime.time(12, 55)
+    end_pm = datetime.time(15, 5) 
+    
+    if (start_am <= now <= end_am) or (start_pm <= now <= end_pm):
+        try:
+            monitor_service.run_check()
+        except Exception as e:
+            logging.error(f"Monitor task error: {e}")
 
 if __name__ == "__main__":
     # 初始化数据库
@@ -352,6 +417,12 @@ if __name__ == "__main__":
     scheduler.add_job(run_midday_routine, 'cron', hour=t_midday[0], minute=t_midday[1], day_of_week='mon-fri')
     scheduler.add_job(run_pre_close_routine, 'cron', hour=t_afternoon[0], minute=t_afternoon[1], day_of_week='mon-fri')
     scheduler.add_job(run_data_sync_routine, 'cron', hour=t_sync[0], minute=t_sync[1], day_of_week='mon-fri')
+
+    # 监控任务 (默认 180s)
+    monitor_interval = 180
+    if 'settings' in CONFIG and 'monitor_interval' in CONFIG['settings']:
+        monitor_interval = CONFIG['settings']['monitor_interval']
+    scheduler.add_job(run_monitor_task, 'interval', seconds=monitor_interval, day_of_week='mon-fri')
 
     logging.info("Agent Scheduler Started. Press Ctrl+C to exit.")
     print("Agent is running...")

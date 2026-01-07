@@ -143,6 +143,49 @@ class TushareClient:
             return 0.0
         return float(df.iloc[0]['close'])
 
+    def get_batch_realtime_quotes(self, ts_code_list):
+        """批量获取实时行情, 返回 {ts_code: price}"""
+        if not ts_code_list:
+            return {}
+        try:
+            # tushare legacy interface uses 6 digit codes usually, but passing full ts_code works too often 
+            # or we need to strip. ts.realtime_quote handles lists.
+            df = ts.realtime_quote(ts_code_list)
+            if df is None or df.empty:
+                return {}
+            
+            result = {}
+            df.columns = [c.lower() for c in df.columns]
+            
+            # Map 6-digit code back to ts_code (handling potential duplicates)
+            # Strategy: Use suffix matching or first match if simple map is not enough
+            # But here we try to be robust: 
+            # ts.realtime_quote uses 6 digits. 
+            # If we have 000001.SZ and 000001.SH (rare for same 6 digits across major exchanges but possible for indices vs stocks)
+            # The simple split map might overwrite. 
+            # Better approach: Iterate over ts_code_list and match against row['code']
+            
+            # Create a lookup: code_6_digits -> list of full_ts_codes
+            code_lookup = {}
+            for full_code in ts_code_list:
+                short_code = full_code.split('.')[0]
+                if short_code not in code_lookup:
+                    code_lookup[short_code] = []
+                code_lookup[short_code].append(full_code)
+            
+            for _, row in df.iterrows():
+                code = row['code'] # 6 digits
+                price = float(row['price'])
+                
+                # Assign this price to all matching full codes
+                if code in code_lookup:
+                    for full_code in code_lookup[code]:
+                        result[full_code] = price
+            return result
+        except Exception as e:
+            logging.error(f"Batch realtime quote failed: {e}")
+            return {}
+
 if __name__ == "__main__":
     from core.db_models import init_db
     init_db()

@@ -119,3 +119,40 @@ class AnalystAgent(BaseAgent):
         logging.info(f"Analyst (Intra-day) reviewing {ts_code} (Holding: {is_holding})...")
         result = self.call_llm(prompt, json_mode=True)
         return result
+
+    def analyze_trigger(self, monitor, current_price, quote_data):
+        """处理价格触发事件"""
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        quote_info = "N/A"
+        open_p, high_p, low_p = 0, 0, 0
+        
+        if quote_data:
+            open_p = quote_data.get('open', 0)
+            high_p = quote_data.get('high', 0)
+            low_p = quote_data.get('low', 0)
+            b1 = quote_data.get('bid1', 0)
+            a1 = quote_data.get('ask1', 0)
+            v = quote_data.get('volume', 0)
+            quote_info = f"Bid1: {b1}, Ask1: {a1}, Vol: {v}, Open: {open_p}, High: {high_p}, Low: {low_p}"
+
+        operator_text = "GREATER" if monitor.operator == 'gt' else "LOWER"
+
+        prompt = self.render_prompt('analysis_trigger.j2',
+            ts_code=monitor.ts_code,
+            monitor_type=monitor.monitor_type,
+            trigger_price=monitor.trigger_price,
+            operator=operator_text,
+            reason=monitor.reason,
+            current_price=current_price,
+            current_time=current_time,
+            quote_info=quote_info,
+            open=open_p,
+            high=high_p,
+            low=low_p,
+            history_trend="N/A"
+        )
+        
+        logging.info(f"Analyst analyzing trigger for {monitor.ts_code}...")
+        result = self.call_llm(prompt, json_mode=True)
+        return result

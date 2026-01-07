@@ -55,6 +55,20 @@ class Order(BaseModel):
     status = CharField(default='FILLED')# FILLED, CANCELLED
     time = DateTimeField(default=datetime.datetime.now)
 
+class PriceMonitor(BaseModel):
+    """价格监控配置"""
+    ts_code = CharField(index=True)
+    trigger_price = FloatField()       # 触发价格
+    operator = CharField()             # 'gt' (大于) or 'lt' (小于)
+    monitor_type = CharField(default='signal') # signal/profit/loss
+    reason = TextField(null=True)      # 监控理由
+    status = CharField(default='ACTIVE') # ACTIVE, TRIGGERED, EXPIRED, COOLDOWN
+    created_at = DateTimeField(default=datetime.datetime.now)
+    triggered_at = DateTimeField(null=True)
+    last_checked_at = DateTimeField(null=True) # 上次检查时间
+    is_active = BooleanField(default=True)
+    warning_sent = BooleanField(default=False) # 是否已发送即将触发预警
+
 class Account(BaseModel):
     """账户资金"""
     id = IntegerField(primary_key=True)
@@ -65,7 +79,7 @@ class Account(BaseModel):
 
 def init_db(CONFIG=None):
     db.connect()
-    db.create_tables([StockDaily, Position, Order, Account], safe=True)
+    db.create_tables([StockDaily, Position, Order, Account, PriceMonitor], safe=True)
     
     # 自动迁移: 检查是否存在 volume_available 列
     try:
