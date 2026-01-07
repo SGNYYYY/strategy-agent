@@ -359,12 +359,19 @@ def run_data_sync_routine(test_mode=False):
 
 def run_monitor_task():
     """实时价格监控任务"""
-    now = datetime.datetime.now().time()
-    # 简单的交易时间判断 (9:20 - 11:35, 12:55 - 15:05)
-    start_am = datetime.time(9, 20)
-    end_am = datetime.time(11, 35)
-    start_pm = datetime.time(12, 55)
-    end_pm = datetime.time(15, 5) 
+    now_dt = datetime.datetime.now()
+    
+    # 1. 排除周末 (0-4 为周一到周五)
+    if now_dt.weekday() > 4:
+        return
+
+    now = now_dt.time()
+    # 简单的交易时间判断 (9:30 - 11:29, 13:00 - 14:49)
+    # 放宽前后几分钟，确保集合竞价和尾盘数据能覆盖
+    start_am = datetime.time(9, 30)
+    end_am = datetime.time(11, 29)
+    start_pm = datetime.time(13, 0)
+    end_pm = datetime.time(14, 49) 
     
     if (start_am <= now <= end_am) or (start_pm <= now <= end_pm):
         try:
