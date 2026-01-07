@@ -95,6 +95,16 @@ def run_pre_market_routine(test_mode=False):
     # 1. 确定候选池
     whitelist = set(CONFIG.get('watchlist', []))
     candidates = set(whitelist)
+
+    # [自动补充] 将所有持仓加入候选池，确保盘中能监控到持仓的异动
+    try:
+        current_holdings = Position.select()
+        held_codes = {p.ts_code for p in current_holdings}
+        if held_codes:
+            candidates.update(held_codes)
+            logging.info(f"Added {len(held_codes)} held stocks to monitor candidates: {held_codes}")
+    except Exception as e:
+        logging.error(f"Failed to add holdings to candidates: {e}")
     
     # 2. 自动挖掘 (如果开启)
     if CONFIG['settings'].get('enable_auto_mining'):
