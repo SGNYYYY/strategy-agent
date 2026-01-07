@@ -4,7 +4,7 @@ import logging
 import datetime
 
 class AnalystAgent(BaseAgent):
-    def analyze_pre_market(self, ts_code, news_context=""):
+    def analyze_pre_market(self, ts_code, news_context="", realtime_quote=None):
         """开盘前分析"""
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -19,10 +19,27 @@ class AnalystAgent(BaseAgent):
         for r in records:
             history_data += f"Date: {r.trade_date}, Open: {r.open}, Close: {r.close}, High: {r.high}, Low: {r.low}, Vol: {r.vol}, Pct: {r.pct_chg}%\n"
 
+        # 整理实时竞价数据
+        auction_info = "N/A"
+        if realtime_quote:
+            try:
+                open_price = float(realtime_quote.get('open', 0))
+                pre_close = float(realtime_quote.get('pre_close', 0))
+                current = float(realtime_quote.get('price', 0))
+                bid1 = float(realtime_quote.get('bid1', 0)) # 买一
+                ask1 = float(realtime_quote.get('ask1', 0)) # 卖一
+                auction_info = f"Open: {open_price}, Pre_Close: {pre_close}, Current: {current}, Bid1: {bid1}, Ask1: {ask1}"
+                if pre_close > 0:
+                     pct = round((open_price - pre_close) / pre_close * 100, 2)
+                     auction_info += f", Open Pct: {pct}%"
+            except:
+                pass
+
         prompt = self.render_prompt('analysis_pre_market.j2', 
                                     ts_code=ts_code, 
                                     history_data=history_data,
                                     news_context=news_context,
+                                    auction_info=auction_info,
                                     current_time=current_time)
         
         logging.info(f"Analyst processing {ts_code}...")

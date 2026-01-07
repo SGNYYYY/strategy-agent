@@ -46,6 +46,42 @@ def run_pre_market_routine(test_mode=False):
     # 0. 结算持仓 (T+1 -> 可卖)
     # 每天开盘前，将所有持仓标记为可用
     trader.settle_positions()
+
+    # 0.5 更新持仓状态 (刷新最新价格/开盘价)
+    try:
+        current_positions = Position.select()
+        updated_count = 0
+        for pos in current_positions:
+            # 尝试获取实时行情(含竞价开盘)
+            quote = ts_client.get_realtime_quote(pos.ts_code)
+            current_price = 0.0
+            
+            if quote:
+                try:
+                    # 优先取当前价(price)，如果是0(集合竞价刚开始可能)，则取open，还不行取pre_close
+                    current_price = float(quote.get('price', 0))
+                    if current_price <= 0:
+                        current_price = float(quote.get('open', 0))
+                    if current_price <= 0:
+                        current_price = float(quote.get('pre_close', 0))
+                except: 
+                    pass
+            
+            # 降级
+            if current_price <= 0:
+                current_price = ts_client.get_latest_price(pos.ts_code)
+
+            if current_price > 0:
+                pos.current_price = current_price
+                pos.market_value = pos.volume * current_price
+                if pos.volume > 0:
+                    pos.profit = pos.market_value - (pos.avg_price * pos.volume)
+                pos.last_updated = datetime.datetime.now()
+                pos.save()
+                updated_count += 1
+        logging.info(f"Updated status for {updated_count} positions.")
+    except Exception as e:
+        logging.error(f"Failed to update positions in pre-market: {e}")
     
     # 1. 确定候选池
     candidates = set(CONFIG.get('watchlist', []))
@@ -67,7 +103,10 @@ def run_pre_market_routine(test_mode=False):
         # 获取个股新闻 (AkShare)
         news = news_client.get_stock_news(ts_code, limit=3)
         
-        report = analyst.analyze_pre_market(ts_code, news)
+        # 获取实时竞价行情
+        quote = ts_client.get_realtime_quote(ts_code)
+        
+        report = analyst.analyze_pre_market(ts_code, news, realtime_quote=quote)
         if report:
              logging.info(f"Report for {ts_code}: {report}")
              analyst_reports.append(report)
@@ -137,7 +176,13 @@ def run_midday_routine(test_mode=False):
         
         if current_price > 0:
             pos.current_price = current_price
-            # pos.save() # Optional
+            
+            # 更新持仓市值和盈亏
+            pos.market_value = pos.volume * current_price
+            if pos.volume > 0:
+                pos.profit = pos.market_value - (pos.avg_price * pos.volume)
+            pos.last_updated = datetime.datetime.now()
+            pos.save()
 
             # 分析
             report = analyst.analyze_intra_day(pos.ts_code, current_price, position=pos, quote_data=quote)
@@ -221,6 +266,10 @@ def run_pre_close_routine(test_mode=False):
         current_price = ts_client.get_latest_price(pos.ts_code)
         if current_price > 0:
             pos.current_price = current_price
+            pos.market_value = pos.volume * current_price
+            if pos.volume > 0:
+                pos.profit = pos.market_value - (pos.avg_price * pos.volume)
+            pos.last_updated = datetime.datetime.now()
             pos.save()
         
         # 2. 分析
@@ -269,10 +318,15 @@ if __name__ == "__main__":
     parser.add_argument('--midday', action='store_true', help='立即运行午间策略')
     parser.add_argument('--pre-close', action='store_true', help='立即运行尾盘策略')
     parser.add_argument('--sync', action='store_true', help='立即运行数据同步')
+    parser.add_argument('--init-data', action='store_true', help='初始化历史数据')
     args = parser.parse_args()
 
     # 手动触发模式
-    if args.pre_market or args.midday or args.pre_close or args.sync:
+    if args.pre_market or args.midday or args.pre_close or args.sync or args.init_data:
+        if args.init_data:
+            logging.info("Initializing history data for watchlist...")
+            for stock in CONFIG.get('watchlist', []):
+                ts_client.init_history_data(stock)
         if args.pre_market:
             run_pre_market_routine(args.test)
         if args.midday:
