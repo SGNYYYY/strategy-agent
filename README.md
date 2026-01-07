@@ -53,7 +53,7 @@ pip install -r requirements.txt
 TUSHARE_TOKEN=your_tushare_token
 DING_ROBOT_ACCESS_TOKEN=your_dingtalk_token
 DING_ROBOT_SECRET=your_dingtalk_secret
-LLM_API_KEY=your_llm_api_key
+LLM_API_KEY=your_llm_api_key1,your_llm_api_key2  # 支持多key轮询
 LLM_BASE_URL=your_llm_base_url
 ```
 
