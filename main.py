@@ -422,7 +422,9 @@ if __name__ == "__main__":
     monitor_interval = 180
     if 'settings' in CONFIG and 'monitor_interval' in CONFIG['settings']:
         monitor_interval = CONFIG['settings']['monitor_interval']
-    scheduler.add_job(run_monitor_task, 'interval', seconds=monitor_interval, day_of_week='mon-fri')
+    # IntervalTrigger DOES NOT support day_of_week argument directly. 
+    # Logic for checking weekday/time is already inside run_monitor_task.
+    scheduler.add_job(run_monitor_task, 'interval', seconds=monitor_interval)
 
     logging.info("Agent Scheduler Started. Press Ctrl+C to exit.")
     print("Agent is running...")
