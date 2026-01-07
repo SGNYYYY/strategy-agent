@@ -1,4 +1,5 @@
 from peewee import *
+from playhouse.migrate import *
 import datetime
 import os
 
@@ -35,6 +36,7 @@ class Position(BaseModel):
     ts_code = CharField(unique=True)    # 股票代码
     symbol_name = CharField(null=True)  # 股票名称
     volume = IntegerField(default=0)    # 持股数量
+    volume_available = IntegerField(default=0) # 可卖持仓 (T+1)
     avg_price = FloatField(default=0.0) #不仅包含买入价格，建议每次买入加权平均
     current_price = FloatField(null=True) # 最新价格(更新用)
     market_value = FloatField(null=True)  # 最新市值
@@ -61,13 +63,30 @@ class Account(BaseModel):
     market_value = FloatField(default=0.0) # 持仓市值
     updated_at = DateTimeField(default=datetime.datetime.now)
 
-def init_db(CONFIG):
+def init_db(CONFIG=None):
     db.connect()
     db.create_tables([StockDaily, Position, Order, Account], safe=True)
+    
+    # 自动迁移: 检查是否存在 volume_available 列
+    try:
+        columns = [c.name for c in db.get_columns('position')]
+        if 'volume_available' not in columns:
+            print("Migrating: Adding volume_available to Position table...")
+            migrator = SqliteMigrator(db)
+            migrate(
+                migrator.add_column('position', 'volume_available', IntegerField(default=0))
+            )
+            # 初始化旧数据：将现有持仓设为可用
+            db.execute_sql('UPDATE position SET volume_available = volume')
+    except Exception as e:
+        print(f"Migration check failed (safe to ignore if new DB): {e}")
+
     # 初始化账户资金 (如果不存在)
     if Account.select().count() == 0:
         # 从配置读取初始资金
-        initial_cash = CONFIG['settings'].get('initial_cash', 1000000.0)
+        initial_cash = 1000000.0
+        if CONFIG and 'settings' in CONFIG:
+             initial_cash = CONFIG['settings'].get('initial_cash', 1000000.0)
         Account.create(id=1, total_assets=initial_cash, cash=initial_cash, market_value=0.0)
     db.close()
 

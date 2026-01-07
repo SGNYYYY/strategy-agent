@@ -20,7 +20,7 @@ settings:
   log_level: "INFO"
 
 schedule:
-  morning_routine: "09:10" # 开盘前分析
+  morning_routine: "09:26" # 开盘前分析 (9:26 获取开盘价)
   midday_routine: "11:23" # 午间休盘前决策
   afternoon_routine: "14:40" # 收盘前决策
   data_sync: "17:10" # 盘后数据同步

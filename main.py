@@ -42,6 +42,10 @@ decision_maker = DecisionMakerAgent()
 def run_pre_market_routine(test_mode=False):
     """早盘流程: 扫描 -> 分析 -> 决策 -> 买入"""
     logging.info(">>> Starting Pre-Market Routine")
+
+    # 0. 结算持仓 (T+1 -> 可卖)
+    # 每天开盘前，将所有持仓标记为可用
+    trader.settle_positions()
     
     # 1. 确定候选池
     candidates = set(CONFIG.get('watchlist', []))

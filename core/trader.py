@@ -4,6 +4,13 @@ import uuid
 import datetime
 
 class Trader:
+    def settle_positions(self):
+        """盘前/盘后结算: 将所有持仓转为可用 (T+1 -> T)"""
+        with db.atomic():
+            query = Position.update(volume_available=Position.volume)
+            rows = query.execute()
+            logging.info(f"Positions settled: Updated {rows} records. All holdings are now available.")
+
     def execute_buy(self, ts_code, budget, reason, price_estimate, stock_name=None):
         """执行买入"""
         volume = int(budget / price_estimate / 100) * 100 # 向下取整到100股
@@ -30,11 +37,12 @@ class Trader:
                 pos = Position.get(Position.ts_code == ts_code)
                 new_total_cost = (pos.avg_price * pos.volume) + cost
                 pos.volume += volume
+                # pos.volume_available 保持不变 (T+1规则)
                 pos.avg_price = new_total_cost / pos.volume
                 pos.current_price = price_estimate
                 pos.save()
             except Position.DoesNotExist:
-                Position.create(ts_code=ts_code, volume=volume, avg_price=price_estimate, current_price=price_estimate)
+                Position.create(ts_code=ts_code, volume=volume, avg_price=price_estimate, current_price=price_estimate, volume_available=0)
 
             # 记录订单
             Order.create(
@@ -56,13 +64,15 @@ class Trader:
             except Position.DoesNotExist:
                 return None
 
+            available_vol = pos.volume_available
             sell_volume = 0
             if action == 'SELL_ALL':
-                sell_volume = pos.volume
+                sell_volume = available_vol
             elif action == 'SELL_HALF':
-                sell_volume = pos.volume // 2
+                sell_volume = available_vol // 2
             
             if sell_volume == 0:
+                logging.warning(f"Cannot sell {ts_code}: available volume is 0 (T+1).")
                 return None
 
             income = sell_volume * price_estimate
@@ -75,6 +85,7 @@ class Trader:
 
             # 更新持仓
             pos.volume -= sell_volume
+            pos.volume_available -= sell_volume
             if pos.volume == 0:
                 pos.delete_instance()
             else:
