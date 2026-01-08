@@ -24,13 +24,18 @@ class MarketScanner:
         logging.info(f"Scanning market for date: {trade_date}")
 
         try:
-            # 获取每日指标：换手率、量比、涨跌幅
-            df = self.pro.daily_basic(ts_code='', trade_date=trade_date, 
-                                      fields='ts_code,close,turnover_rate,volume_ratio,pct_chg')
+            # 获取每日指标：换手率、量比
+            df_basic = self.pro.daily_basic(ts_code='', trade_date=trade_date, 
+                                      fields='ts_code,turnover_rate,volume_ratio')
+            # 获取行情数据：涨跌幅
+            df_daily = self.pro.daily(ts_code='', trade_date=trade_date, fields='ts_code,pct_chg')
             
-            if df.empty:
+            if df_basic.empty or df_daily.empty:
                 logging.warning("Market scan returned empty data.")
                 return []
+
+            # 合并数据
+            df = df_basic.merge(df_daily, on='ts_code')
 
             # 筛选逻辑：
             # 1. 换手率 > 5% (活跃)

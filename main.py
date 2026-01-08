@@ -34,7 +34,7 @@ class MonitorTaskFilter(logging.Filter):
 # 必须添加到具体的子 logger，因为 logging 的 filter 不会向下传播，
 # 而 apscheduler 的日志是从 apscheduler.executors.default 发出的，会向上传播到 root
 logging.getLogger('apscheduler.executors.default').addFilter(MonitorTaskFilter())
-logging.getLogger('apscheduler.scheduler').addFilter(MonitorTaskFilter())
+# logging.getLogger('apscheduler.scheduler').addFilter(MonitorTaskFilter())
 
 # 加载配置
 with open("config.yaml", "r") as f:
