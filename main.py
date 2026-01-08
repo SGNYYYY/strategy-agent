@@ -12,7 +12,7 @@ from core.scanner import MarketScanner
 from core.notifier import DingTalkNotifier
 from core.trader import Trader
 from core.news_client import NewsClient
-from core.db_models import init_db, Position, PriceMonitor
+from core.db_models import init_db, Position, PriceMonitor, Account
 from core.monitor import PriceMonitorService
 from agents.analyst import AnalystAgent
 from agents.decision_maker import DecisionMakerAgent
@@ -49,6 +49,26 @@ trader = Trader()
 analyst = AnalystAgent()
 decision_maker = DecisionMakerAgent()
 monitor_service = PriceMonitorService()
+
+def update_account_stats():
+    """根据最新持仓市值更新账户总资产"""
+    try:
+        total_mv = 0.0
+        # 重新计算所有持仓的市值
+        for pos in Position.select():
+            if pos.market_value:
+                total_mv += pos.market_value
+        
+        account = Account.select().first()
+        if account:
+            account.market_value = total_mv
+            # total_assets = cash + market_value
+            account.total_assets = account.cash + total_mv
+            account.updated_at = datetime.datetime.now()
+            account.save()
+            logging.info(f"Account synced: Assets={account.total_assets:.2f}, MV={total_mv:.2f}, Cash={account.cash:.2f}")
+    except Exception as e:
+        logging.error(f"Failed to sync account stats: {e}")
 
 def run_pre_market_routine(test_mode=False):
     """早盘流程: 扫描 -> 分析 -> 决策 -> 买入"""
@@ -100,6 +120,9 @@ def run_pre_market_routine(test_mode=False):
         logging.info(f"Cleared {deleted} expired monitors from previous day.")
     except Exception as e:
         logging.error(f"Failed to clear old monitors: {e}")
+    
+    # [新增] 同步账户资产 (基于0.5更新的持仓)
+    update_account_stats()
 
     # 1. 确定候选池
     whitelist = set(CONFIG.get('watchlist', []))
@@ -280,7 +303,8 @@ def run_midday_routine(test_mode=False):
                 elif action == 'BUY':
                     logging.info(f"Analyst suggests ADDING position for {pos.ts_code}")
                     buy_candidates_reports.append(report)
-
+    # [新增] 更新账户市值
+    update_account_stats()
     # 2. 遍历 Watchlist (检查新开仓) - 仅检查非持仓部分
     watchlist = set(CONFIG.get('watchlist', []))
     new_candidates = watchlist - held_codes
@@ -382,6 +406,9 @@ def run_pre_close_routine(test_mode=False):
                 execution_logs.append(f"{res}\n  _Reason: {sell_order['reason']}_")
             else:
                 execution_logs.append(f"❌ Failed to SELL {sell_order['ts_code']} ({stock_name}): Check logs.")
+
+    # [新增] 更新账户市值
+    update_account_stats()
 
     # 5. 推送
     if execution_logs:

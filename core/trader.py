@@ -33,7 +33,8 @@ class Trader:
             
             # 更新账户
             account.cash -= cost
-            account.total_assets = account.cash + account.market_value + cost # 简化计算
+            account.market_value += cost
+            account.total_assets = account.cash + account.market_value
             account.save()
 
             # 更新持仓 (Upsert)
@@ -44,9 +45,17 @@ class Trader:
                 # pos.volume_available 保持不变 (T+1规则)
                 pos.avg_price = new_total_cost / pos.volume
                 pos.current_price = price_estimate
+                pos.market_value = pos.volume * pos.current_price
                 pos.save()
             except Position.DoesNotExist:
-                Position.create(ts_code=ts_code, volume=volume, avg_price=price_estimate, current_price=price_estimate, volume_available=0)
+                Position.create(
+                    ts_code=ts_code, 
+                    volume=volume, 
+                    avg_price=price_estimate, 
+                    current_price=price_estimate, 
+                    market_value=cost,
+                    volume_available=0
+                )
 
             # 记录订单
             Order.create(
@@ -89,11 +98,18 @@ class Trader:
             # 更新账户
             account = Account.select().first()
             account.cash += income
+            account.market_value -= income
+            account.total_assets = account.cash + account.market_value
             account.save()
 
             # 更新持仓
             pos.volume -= sell_volume
             pos.volume_available -= sell_volume
+            
+            # 更新市值
+            pos.current_price = price_estimate
+            pos.market_value = pos.volume * price_estimate
+
             if pos.volume == 0:
                 pos.delete_instance()
             else:
