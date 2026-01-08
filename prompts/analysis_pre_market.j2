@@ -14,19 +14,25 @@ History Data (Last 30 days):
 {{ news_context }}
 
 **Instructions:**
-1. Analyze the technical trend (e.g., Moving Averages, Volume).
-2. Evaluate news sentiment (if any).
-3. Provide a 'Confidence Score' from 0 to 10.
-4. Provide a 'Action Recommendation': BUY or WAIT.
-5. Provide a concise 'Reasoning' (max 50 words).
-6. [Optional] Suggest a **Price Monitor** if we should watch for a specific price level (e.g. breakout point).
+1. **Trend Analysis**: Evaluate the technical trend based on History Data (e.g., Moving Averages, Volume Trend).
+2. **Auction Analysis**: Check the 'Call Auction' info. Is it opening High or Low? Does the volume look significant?
+3. **Sentiment & Catalysts**: Identify any specific catalysts (news, earnings) driving the stock. Are they sustainable?
+4. **Risk Assessment**: What could go wrong? (e.g., Overhead resistance, market downturn).
+5. **Scoring**: Provide a 'Confidence Score' (0-10) based on the strength of the setup.
+6. **Action**: Recommend BUY only if the setup is high-probability.
+7. **Monitor**: Suggest a Price Monitor setup if we need to wait for a specific confirmation level.
 
 **Output Format (JSON):**
 {
   "ts_code": "{{ ts_code }}",
   "confidence": <float>,
   "action": "BUY" or "WAIT",
-  "reason": "<string>",
+  "reason": "Clear, concise reasoning summarizing the technicals and catalysts.",
+  "analysis_details": {
+      "technical_trend": "Bullish/Bearish/Neutral",
+      "catalysts": ["..."],
+      "risks": ["..."]
+  },
   "monitor_setup": {
       "trigger_price": <float>,     // 0 if no monitor needed
       "operator": "gt" or "lt",     // 'gt' for breakout, 'lt' for dip buy

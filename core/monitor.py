@@ -109,17 +109,33 @@ class PriceMonitorService:
                 # 注意：DecisionMaker 需要新增 decide_on_trigger 方法
                 orders = self.decision_maker.decide_on_trigger(analysis_result)
                 
-                # E. 执行交易
+                # E. 执行交易 & 通知
+                
+                # 构造消息基础信息
+                stock_name = self.ts_client.get_stock_name(monitor.ts_code) or monitor.ts_code
+                analyst_action = analysis_result.get('action', 'N/A')
+                analyst_conf = analysis_result.get('confidence', 0)
+                reason_text = analysis_result.get('reason', 'No specific reason provided.')
+                
+                msg_title = f"⚡ 盘中监控触发: {stock_name} ({monitor.ts_code})"
+                
+                msg_body = f"**触发价格:** {price} (目标: {monitor.trigger_price})\n\n"
+                msg_body += f"📊 **分析师建议:** {analyst_action} (信心: {analyst_conf})\n"
+                msg_body += f"📝 **逻辑:** {reason_text}\n\n"
+
                 if orders:
                     results = self.trader.execute_orders(orders)
                     if results:
-                        msg_text = "\n".join(results)
-                        reason_text = analysis_result.get('reason', 'No specific reason provided.')
-                        full_msg = f"**[Trigger Executed]**\n\n{msg_text}\n\n**Reason:** {reason_text}"
-                        self.notifier.send_markdown(f"Trigger: {monitor.ts_code}", full_msg)
-                        logging.info(f"Trigger execution completed for {monitor.ts_code}")
+                        msg_body += "✅ **机器人自动执行:** \n" + "\n".join([f"> {r}" for r in results])
+                    else:
+                        msg_body += "⚠️ **机器人尝试执行但在交易环节被拒 (可能余额不足)**"
                 else:
-                    logging.info(f"Trigger analyzed but no orders generated for {monitor.ts_code}")
+                    msg_body += "✋ **机器人决策:** 保持观望 (未满足自动交易条件)\n"
+                    msg_body += "> _提示: 即使机器人未交易，由于已触发监控且分析师已给出建议，请关注_."
+                
+                self.notifier.send_markdown(msg_title, msg_body)
+                logging.info(f"Trigger processed for {monitor.ts_code}")
                     
             except Exception as e:
                 logging.error(f"Error handling trigger for {monitor.ts_code}: {e}", exc_info=True)
+                self.notifier.send_text(f"Error handling trigger for {monitor.ts_code}: {e}")

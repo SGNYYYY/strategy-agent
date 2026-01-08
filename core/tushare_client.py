@@ -148,39 +148,45 @@ class TushareClient:
         if not ts_code_list:
             return {}
         try:
-            # tushare legacy interface uses 6 digit codes usually, but passing full ts_code works too often 
-            # or we need to strip. ts.realtime_quote handles lists.
-            df = ts.realtime_quote(ts_code_list)
-            if df is None or df.empty:
+            # tushare realtime_quote interface works best with joined string of full codes (e.g. "000001.SZ,600000.SH")
+            # It returns a DataFrame with 'TS_CODE' (or 'ts_code') column matching the input.
+            all_dfs = []
+            chunk_size = 80 
+            
+            for i in range(0, len(ts_code_list), chunk_size):
+                chunk = ts_code_list[i:i+chunk_size]
+                codes_str = ','.join(chunk)
+                try:
+                    sub_df = ts.realtime_quote(ts_code=codes_str)
+                    if sub_df is not None and not sub_df.empty:
+                        all_dfs.append(sub_df)
+                except Exception as chunk_e:
+                    logging.warning(f"Batch quote chunk failed: {chunk_e}")
+
+            if not all_dfs:
+                return {}
+            
+            df = pd.concat(all_dfs, ignore_index=True)
+            if df.empty:
                 return {}
             
             result = {}
             df.columns = [c.lower() for c in df.columns]
             
-            # Map 6-digit code back to ts_code (handling potential duplicates)
-            # Strategy: Use suffix matching or first match if simple map is not enough
-            # But here we try to be robust: 
-            # ts.realtime_quote uses 6 digits. 
-            # If we have 000001.SZ and 000001.SH (rare for same 6 digits across major exchanges but possible for indices vs stocks)
-            # The simple split map might overwrite. 
-            # Better approach: Iterate over ts_code_list and match against row['code']
-            
-            # Create a lookup: code_6_digits -> list of full_ts_codes
-            code_lookup = {}
-            for full_code in ts_code_list:
-                short_code = full_code.split('.')[0]
-                if short_code not in code_lookup:
-                    code_lookup[short_code] = []
-                code_lookup[short_code].append(full_code)
-            
             for _, row in df.iterrows():
-                code = row['code'] # 6 digits
-                price = float(row['price'])
-                
-                # Assign this price to all matching full codes
-                if code in code_lookup:
-                    for full_code in code_lookup[code]:
-                        result[full_code] = price
+                # Prefer 'ts_code', fallback to 'code' if necessary (though ts_code should be present)
+                code = row.get('ts_code', row.get('code'))
+                # Handle price column variations
+                price = 0.0
+                for col in ['price', 'close', 'trade']:
+                    if col in row:
+                        val = float(row[col])
+                        if val > 0:
+                            price = val
+                            break
+                            
+                if code and price > 0:
+                    result[code] = price
             return result
         except Exception as e:
             logging.error(f"Batch realtime quote failed: {e}")

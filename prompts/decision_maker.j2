@@ -8,11 +8,15 @@ Current Holdings: {{ holdings_summary }}
 {{ analyst_reports }}
 
 **Instructions:**
-1. Select the top {{ max_buy_count }} stocks to buy. Prioritize stocks with higher 'Confidence Score' from the analyst reports.
-2. Determine the budget for each:
+1. **Filter**: Select the top {{ max_buy_count }} stocks to buy. Prioritize stocks with higher 'Confidence Score' from the analyst reports.
+2. **Sizing Strategy**: Allocate budget based on confidence.
+   - High Confidence (e.g., >8.5): Allocate close to max limit.
+   - Medium Confidence: Allocate 50-70% of max limit.
+   - Do NOT simply allocate the max limit to everyone.
+3. **Constraints**:
    - Do not exceed Available Cash.
    - Do not exceed Single Stock Max Limit: {{ max_single_position }}
-3. Return the list of orders.
+4. **Portfolio Check**: If multiple candidates are from the same industry/sector (if inferable), reduce exposure to avoid concentration risk.
 
 **Output Format (JSON):**
 {
@@ -20,7 +24,7 @@ Current Holdings: {{ holdings_summary }}
     {
       "ts_code": "...",
       "budget": <float>,
-      "reason": "..."
+      "reason": "Explain the budget allocation size based on confidence/risk."
     }
   ]
 }

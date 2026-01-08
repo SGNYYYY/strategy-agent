@@ -20,17 +20,23 @@ Low: {{ low }}
 Close (Current): {{ close }}
 
 **Strategy Instructions:**
-1. **Take Profit (For Held)**: If PnL is > 2% and price is falling back from High, consider SELL_HALF.
-2. **Stop Loss (For Held)**: If PnL is < -3% or trend is clearly broken, consider SELL_ALL.
-3. **Add Position (For Held)**: If trend is very strong (price > open and near high) and PnL > 0.5%, consider BUY.
-4. **New Entry (For Not Held)**: If price > open and trend is upward/breakout with strength, consider BUY.
-5. **Wait**: Otherwise, HOLD (or WAIT).
+1. **Analyze Volume & Momentum**: Is the price movement supported by volume? Is there a divergence?
+2. **Review Position (If Held)**:
+   - **Take Profit**: If PnL > 2% AND momentum is fading (e.g., lower highs), consider SELL_HALF.
+   - **Stop Loss**: If PnL < -3% OR support is broken with volume, consider SELL_ALL.
+   - **Add Position**: Only if trend is extremely strong (Breakout with Volume) AND current PnL is positive.
+3. **New Entry (If Not Held)**: Consider BUY only if there is a verified breakout or a strong support bounce with volume confirmation.
+4. **Risk Check**: Avoid buying if the price is already extended (overbought).
 
 **Output Format (JSON):**
 {
   "ts_code": "{{ ts_code }}",
   "action": "BUY" or "HOLD" or "SELL_ALL" or "SELL_HALF",
-  "reason": "<string>",
-  "confidence": <float 0-10>
+  "reason": "Specific reason citing PnL, Volume, or Trend.",
+  "confidence": <float 0-10>,
+  "analysis_metrics": {
+      "trend_strength": "Strong/Weak/Neutral",
+      "volume_status": "Heavy/Light/Normal"
+  }
 }
 ```

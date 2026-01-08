@@ -26,6 +26,15 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+# 自定义日志过滤器：屏蔽 run_monitor_task 的 apscheduler 日志
+class MonitorTaskFilter(logging.Filter):
+    def filter(self, record):
+        return "run_monitor_task" not in record.getMessage()
+
+# 必须添加到具体的子 logger，因为 logging 的 filter 不会向下传播，
+# 而 apscheduler 的日志是从 apscheduler.executors.default 发出的，会向上传播到 root
+logging.getLogger('apscheduler.executors.default').addFilter(MonitorTaskFilter())
+logging.getLogger('apscheduler.scheduler').addFilter(MonitorTaskFilter())
 
 # 加载配置
 with open("config.yaml", "r") as f:
@@ -171,7 +180,14 @@ def run_pre_market_routine(test_mode=False):
     buy_orders = decision_maker.make_buy_decision(analyst_reports, max_position_pct=max_pos_pct)
     
     execution_logs = []
-    suggested_ops = []
+    recommendations_msg = []
+    
+    # 提取所有高信心的分析师推荐
+    for report in analyst_reports:
+        if report.get('action') == 'BUY' and float(report.get('confidence', 0)) >= 7.0:
+            ts_code = report['ts_code']
+            stock_name = ts_client.get_stock_name(ts_code) or ts_code
+            recommendations_msg.append(f"**{stock_name} ({ts_code})** - 信心: {report.get('confidence')}\n   _Reason: {report.get('reason')}_")
 
     if buy_orders:
         for order in buy_orders:
@@ -182,29 +198,32 @@ def run_pre_market_routine(test_mode=False):
             price = ts_client.get_latest_price(ts_code)
             stock_name = ts_client.get_stock_name(ts_code)
             
-            # 记录建议信息
-            suggested_ops.append(f"{ts_code} ({stock_name if stock_name else '未知'}): 预算 {budget}")
-
             if price > 0:
                 res = trader.execute_buy(ts_code, budget, reason, price, stock_name=stock_name)
                 if res: 
                     # 增加理由到通知
-                    execution_logs.append(f"{res}\n  _Reason: {reason}_")
+                    execution_logs.append(f"{res}")
+                else:
+                    execution_logs.append(f"❌ Failed to buy {stock_name}: Check logs for details.")
     
     # 5. 推送
-    if suggested_ops:
+    if recommendations_msg or execution_logs:
         msg = "**早盘策略报告** \n\n"
-        msg += "💡 **AI决策建议:** \n" + "\n".join([f"- {s}" for s in suggested_ops]) + "\n\n"
         
-        if execution_logs:
-            msg += "✅ **计划执行买入:** \n" + "\n".join([f"- {l}" for l in execution_logs])
+        if recommendations_msg:
+             msg += "💡 **AI 重点推荐 (关注):** \n" + "\n".join([f"- {s}" for s in recommendations_msg]) + "\n\n"
         else:
-            msg += "⚠️ **未实际执行** (可能资金不足或价格无效)"
+             msg += "💡 **AI 重点推荐:** 本次扫描无高信心标的。\n\n"
+             
+        if execution_logs:
+            msg += "✅ **机器人执行操作:** \n" + "\n".join([f"- {l}" for l in execution_logs])
+        else:
+            msg += "✋ **机器人执行操作:** 无 (未满足资金/风控条件)"
             
         notifier.send_markdown("早盘策略", msg)
     else:
         if test_mode:
-            notifier.send_markdown("早盘策略", "**早盘策略报告** \n\n今日无买入计划。")
+            notifier.send_markdown("早盘策略", "**早盘策略报告** \n\n今日无买入计划，亦无推荐。")
         logging.info("今日无买入计划，不发送通知。")
     logging.info("<<< Pre-Market Routine Finished")
 
@@ -254,6 +273,8 @@ def run_midday_routine(test_mode=False):
                         res = trader.execute_sell(sell_order['ts_code'], sell_order['action'], sell_order['reason'], current_price, stock_name=stock_name)
                         if res: 
                             execution_logs.append(f"{res}\n  _Reason: {sell_order['reason']}_")
+                        else:
+                            execution_logs.append(f"❌ Failed to SELL {sell_order['ts_code']}: Check logs.")
                 
                 # 情况B: 加仓建议
                 elif action == 'BUY':
@@ -298,15 +319,31 @@ def run_midday_routine(test_mode=False):
                 res = trader.execute_buy(ts_code, budget, reason, price, stock_name=stock_name)
                 if res: 
                     execution_logs.append(f"{res}\n  _Reason: {reason}_")
+                else:
+                    execution_logs.append(f"❌ Failed to BUY {ts_code}: Check logs.")
 
     # 4. 推送
-    if execution_logs:
-        msg = "**盘中风控报告(午间)** \n\n"
-        msg += "🔔 **执行操作(买/卖):** \n" + "\n".join([f"- {l}" for l in execution_logs])
+    midday_recs = []
+    for r in buy_candidates_reports:
+         if float(r.get('confidence', 0)) >= 7.0:
+             n = ts_client.get_stock_name(r['ts_code']) or r['ts_code']
+             midday_recs.append(f"{n} ({r['ts_code']}) - Buy Signal (Conf: {r.get('confidence')})")
+
+    if midday_recs or execution_logs:
+        msg = "**盘中策略报告(午间)** \n\n"
+        
+        if midday_recs:
+            msg += "💡 **发现买入机会:** \n" + "\n".join([f"- {s}" for s in midday_recs]) + "\n\n"
+            
+        if execution_logs:
+            msg += "🔔 **执行操作(买/卖):** \n" + "\n".join([f"- {l}" for l in execution_logs])
+        else:
+            msg += "🔔 **执行操作:** 无 (未满足条件)."
+            
         notifier.send_markdown("盘中操作", msg)
     else:
         if test_mode:
-            notifier.send_markdown("盘中报告", "**盘中分析完成** \n\n无操作建议。")
+            notifier.send_markdown("盘中报告", "**盘中分析完成** \n\n无重磅信号。")
         logging.info("Midday check finished, no action.")
 
 def run_pre_close_routine(test_mode=False):
@@ -343,9 +380,10 @@ def run_pre_close_routine(test_mode=False):
             res = trader.execute_sell(sell_order['ts_code'], sell_order['action'], sell_order['reason'], current_price, stock_name=stock_name)
             if res: 
                 execution_logs.append(f"{res}\n  _Reason: {sell_order['reason']}_")
+            else:
+                execution_logs.append(f"❌ Failed to SELL {sell_order['ts_code']} ({stock_name}): Check logs.")
 
     # 5. 推送
-    msg = "**尾盘风控报告** \n\n"
     if execution_logs:
         msg = "**尾盘风控报告** \n\n"
         msg += "⚠️ **触发卖出信号:** \n" + "\n".join([f"- {l}" for l in execution_logs])
@@ -435,8 +473,8 @@ if __name__ == "__main__":
     scheduler.add_job(run_pre_close_routine, 'cron', hour=t_afternoon[0], minute=t_afternoon[1], day_of_week='mon-fri')
     scheduler.add_job(run_data_sync_routine, 'cron', hour=t_sync[0], minute=t_sync[1], day_of_week='mon-fri')
 
-    # 监控任务 (默认 180s)
-    monitor_interval = 180
+    # 监控任务 (默认 120s)
+    monitor_interval = 120
     if 'settings' in CONFIG and 'monitor_interval' in CONFIG['settings']:
         monitor_interval = CONFIG['settings']['monitor_interval']
     # IntervalTrigger DOES NOT support day_of_week argument directly. 

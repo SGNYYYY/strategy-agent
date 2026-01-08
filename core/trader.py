@@ -13,6 +13,10 @@ class Trader:
 
     def execute_buy(self, ts_code, budget, reason, price_estimate, stock_name=None):
         """执行买入"""
+        if price_estimate <= 0:
+            logging.error(f"Cannot execute BUY for {ts_code}: Price estimate is invalid ({price_estimate})")
+            return None
+
         volume = int(budget / price_estimate / 100) * 100 # 向下取整到100股
         if volume == 0:
             logging.warning(f"Budget {budget} too low for {ts_code} at {price_estimate}")
@@ -58,6 +62,10 @@ class Trader:
 
     def execute_sell(self, ts_code, action, reason, price_estimate, stock_name=None):
         """执行卖出"""
+        if price_estimate <= 0:
+            logging.error(f"Cannot execute SELL for {ts_code}: Price estimate is invalid ({price_estimate})")
+            return None
+
         with db.atomic():
             try:
                 pos = Position.get(Position.ts_code == ts_code)
