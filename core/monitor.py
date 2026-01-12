@@ -119,7 +119,8 @@ class PriceMonitorService:
                 
                 msg_title = f"⚡ 盘中监控触发: {stock_name} ({monitor.ts_code})"
                 
-                msg_body = f"**触发价格:** {price} (目标: {monitor.trigger_price})\n\n"
+                msg_body = f"⚡ 盘中监控触发: {stock_name} ({monitor.ts_code})"
+                msg_body += f"**触发价格:** {price} (目标: {monitor.trigger_price})\n\n"
                 msg_body += f"📊 **分析师建议:** {analyst_action} (信心: {analyst_conf})\n"
                 msg_body += f"📝 **逻辑:** {reason_text}\n\n"
 

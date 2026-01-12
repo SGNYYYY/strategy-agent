@@ -18,7 +18,7 @@ watchlist:
 settings:
   initial_cash: 25000
   max_position_per_stock: 0.3 # 单只股票最大仓位 30%
-  enable_auto_mining: true # 是否允许挖掘池外股票
+  enable_auto_mining: false # 是否允许挖掘池外股票，开启挖掘的话时间会比较久
   database_file: "data/strategy.db"
   log_level: "INFO"
 
