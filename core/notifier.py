@@ -10,11 +10,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class DingTalkNotifier:
     def __init__(self, access_token=None, secret=None):
         self.access_token = access_token or os.getenv("DING_ROBOT_ACCESS_TOKEN")
         self.secret = secret or os.getenv("DING_ROBOT_SECRET")
-        
+
         if not self.access_token or not self.secret:
             logging.warning("DingTalk configuration missing. Notifications will not be sent.")
 
@@ -27,8 +28,9 @@ class DingTalkNotifier:
 
     def send_text(self, msg, at_user_ids=None, at_mobiles=None, is_at_all=False):
         """发送纯文本消息"""
-        if not self.access_token: return
-        
+        if not self.access_token:
+            return
+
         url = self._get_signed_url()
         body = {
             "at": {
@@ -45,8 +47,9 @@ class DingTalkNotifier:
 
     def send_markdown(self, title, text, at_user_ids=None, at_mobiles=None, is_at_all=False):
         """发送Markdown消息"""
-        if not self.access_token: return
-        
+        if not self.access_token:
+            return
+
         url = self._get_signed_url()
         body = {
             "at": {
@@ -71,6 +74,7 @@ class DingTalkNotifier:
         except Exception as e:
             logging.error(f"Failed to send DingTalk notification: {e}")
             return None
+
 
 if __name__ == "__main__":
     # Test

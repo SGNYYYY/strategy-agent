@@ -5,10 +5,11 @@ import time
 import logging
 import os
 from dotenv import load_dotenv
-from peewee import IntegrityError, chunked
+from peewee import chunked
 from core.db_models import StockDaily, db
 
 load_dotenv()
+
 
 class TushareClient:
     def __init__(self):
@@ -46,7 +47,7 @@ class TushareClient:
             return df
         except Exception as e:
             logging.error(f"Tushare fetch_daily failed for {ts_code}: {e}")
-            time.sleep(1) # Simple retry delay
+            time.sleep(1)  # Simple retry delay
             return None
 
     def save_to_db(self, df):
@@ -81,7 +82,7 @@ class TushareClient:
         logging.info(f"Initializing history data for {ts_code} ({years} years)...")
         end_date = datetime.datetime.now().strftime('%Y%m%d')
         start_date = (datetime.datetime.now() - datetime.timedelta(days=365 * years)).strftime('%Y%m%d')
-        
+
         df = self.fetch_daily(ts_code, start_date, end_date)
         if df is not None:
             self.save_to_db(df)
@@ -93,7 +94,7 @@ class TushareClient:
         """追加单日数据"""
         if not execution_date:
             execution_date = datetime.datetime.now().strftime('%Y%m%d')
-        
+
         logging.info(f"Appending daily data for {ts_code} on {execution_date}...")
         df = self.fetch_daily(ts_code, start_date=execution_date, end_date=execution_date)
         if df is not None and not df.empty:
@@ -137,7 +138,9 @@ class TushareClient:
         if df is None or df.empty:
             # 尝试获取上一交易日
             # 简化处理，直接取库里最新一条
-            last_record = StockDaily.select().where(StockDaily.ts_code == ts_code).order_by(StockDaily.trade_date.desc()).first()
+            last_record = StockDaily.select().where(
+                StockDaily.ts_code == ts_code).order_by(
+                StockDaily.trade_date.desc()).first()
             if last_record:
                 return last_record.close
             return 0.0
@@ -151,10 +154,10 @@ class TushareClient:
             # tushare realtime_quote interface works best with joined string of full codes (e.g. "000001.SZ,600000.SH")
             # It returns a DataFrame with 'TS_CODE' (or 'ts_code') column matching the input.
             all_dfs = []
-            chunk_size = 80 
-            
+            chunk_size = 80
+
             for i in range(0, len(ts_code_list), chunk_size):
-                chunk = ts_code_list[i:i+chunk_size]
+                chunk = ts_code_list[i:i + chunk_size]
                 codes_str = ','.join(chunk)
                 try:
                     sub_df = ts.realtime_quote(ts_code=codes_str)
@@ -165,14 +168,14 @@ class TushareClient:
 
             if not all_dfs:
                 return {}
-            
+
             df = pd.concat(all_dfs, ignore_index=True)
             if df.empty:
                 return {}
-            
+
             result = {}
             df.columns = [c.lower() for c in df.columns]
-            
+
             for _, row in df.iterrows():
                 # Prefer 'ts_code', fallback to 'code' if necessary (though ts_code should be present)
                 code = row.get('ts_code', row.get('code'))
@@ -184,13 +187,14 @@ class TushareClient:
                         if val > 0:
                             price = val
                             break
-                            
+
                 if code and price > 0:
                     result[code] = price
             return result
         except Exception as e:
             logging.error(f"Batch realtime quote failed: {e}")
             return {}
+
 
 if __name__ == "__main__":
     from core.db_models import init_db

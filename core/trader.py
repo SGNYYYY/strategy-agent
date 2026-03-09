@@ -1,7 +1,7 @@
 from core.db_models import db, Position, Account, Order
 import logging
 import uuid
-import datetime
+
 
 class Trader:
     def settle_positions(self):
@@ -17,20 +17,20 @@ class Trader:
             logging.error(f"Cannot execute BUY for {ts_code}: Price estimate is invalid ({price_estimate})")
             return None
 
-        volume = int(budget / price_estimate / 100) * 100 # 向下取整到100股
+        volume = int(budget / price_estimate / 100) * 100  # 向下取整到100股
         if volume == 0:
             logging.warning(f"Budget {budget} too low for {ts_code} at {price_estimate}")
             return None
 
         cost = volume * price_estimate
         name_str = f"({stock_name})" if stock_name else ""
-        
+
         with db.atomic():
             account = Account.select().first()
             if account.cash < cost:
                 logging.warning("Insufficient funds")
                 return None
-            
+
             # 更新账户
             account.cash -= cost
             account.market_value += cost
@@ -49,10 +49,10 @@ class Trader:
                 pos.save()
             except Position.DoesNotExist:
                 Position.create(
-                    ts_code=ts_code, 
-                    volume=volume, 
-                    avg_price=price_estimate, 
-                    current_price=price_estimate, 
+                    ts_code=ts_code,
+                    volume=volume,
+                    avg_price=price_estimate,
+                    current_price=price_estimate,
                     market_value=cost,
                     volume_available=0
                 )
@@ -87,14 +87,14 @@ class Trader:
                 sell_volume = available_vol
             elif action == 'SELL_HALF':
                 sell_volume = available_vol // 2
-            
+
             if sell_volume == 0:
                 logging.warning(f"Cannot sell {ts_code}: available volume is 0 (T+1).")
                 return None
 
             income = sell_volume * price_estimate
             name_str = f"({stock_name})" if stock_name else ""
-            
+
             # 更新账户
             account = Account.select().first()
             account.cash += income
@@ -105,7 +105,7 @@ class Trader:
             # 更新持仓
             pos.volume -= sell_volume
             pos.volume_available -= sell_volume
-            
+
             # 更新市值
             pos.current_price = price_estimate
             pos.market_value = pos.volume * price_estimate
@@ -137,7 +137,7 @@ class Trader:
                 reason = order.get('reason', '')
                 price = order.get('price', 0)
                 # 如果没有指定价格，可能需要再次获取或者在调用前传进来，这里假设必须传
-                
+
                 res = None
                 if action == 'BUY':
                     budget = order.get('budget', 0)
@@ -147,9 +147,9 @@ class Trader:
                     act = action
                     if action in ['STOP_LOSS', 'TAKE_PROFIT']:
                         act = 'SELL_ALL'
-                    
+
                     res = self.execute_sell(ts_code, act, reason, price)
-                
+
                 if res:
                     results.append(res)
             except Exception as e:

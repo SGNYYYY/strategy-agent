@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class BaseAgent:
     def __init__(self):
         # Support multiple API keys separated by commas for rotation
@@ -15,14 +16,14 @@ class BaseAgent:
         self.api_keys = [k.strip() for k in api_keys_str.split(',') if k.strip()]
         self.base_url = os.getenv("LLM_BASE_URL")
         self.model_name = os.getenv("LLM_MODEL_ID", "Qwen/Qwen3-8B")
-        
+
         if not self.api_keys:
             logging.warning("No LLM_API_KEY found")
             self.clients = []
             self.client_cycle = None
         else:
             self.clients = [
-                OpenAI(api_key=k, base_url=self.base_url) 
+                OpenAI(api_key=k, base_url=self.base_url)
                 for k in self.api_keys
             ]
             self.client_cycle = itertools.cycle(self.clients)
@@ -34,7 +35,7 @@ class BaseAgent:
             # "thinking_budget": 4096
         }
         self.extra_body = extra_body
-        
+
         self.jinja_env = Environment(loader=FileSystemLoader('prompts'))
 
     def call_llm(self, prompt, json_mode=False):
@@ -42,10 +43,10 @@ class BaseAgent:
             if not self.clients or not self.client_cycle:
                 logging.error("No available LLM clients configured")
                 return None
-                
+
             # Get next client in rotation
             client = next(self.client_cycle)
-            
+
             response = client.chat.completions.create(
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
